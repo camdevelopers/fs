@@ -1,9 +1,9 @@
 const CACHE = 'feedash-v1';
 const APP_SHELL = [
-  '/',
-  '/index.html',
-  '/grid.css',
-  '/manifest.json',
+  './',
+  './index.html',
+  './grid.css',
+  './manifest.json',
   'https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js',
   'https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.wasm'
 ];
