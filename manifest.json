@@ -1,7 +1,7 @@
 {
   "name": "Fee Status Dashboard",
   "short_name": "FeeDash",
-  "start_url": "/index.html",
+  "start_url": "./index.html",
   "display": "standalone",
   "background_color": "#0f0f0f",
   "theme_color": "#18181b",
