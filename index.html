@@ -3,10 +3,9 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fee Status Dashboard v3</title>
+  <title>Fee Status Dashboard v4</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="grid.css">
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/aes-js/3.1.2/index.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
   <style>
     /* ─── Login ─── */
@@ -145,18 +144,20 @@ function hexToBytes(hex) {
   return bytes;
 }
 
-function decryptValue(encoded, encKey) {
+async function decryptValue(encoded, encKey) {
   try {
     const raw = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));
-    const aes = new aesjs.ModeOfOperation.gcm(hexToBytes(encKey), raw.slice(0, 12));
-    const pt = aes.decrypt(raw.slice(12));
-    return aesjs.utils.hex.fromBytes(pt);
+    const key = await crypto.subtle.importKey('raw', hexToBytes(encKey), { name: 'AES-GCM' }, false, ['decrypt']);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', nonce: raw.slice(0, 12) }, key, raw.slice(12));
+    return new TextDecoder().decode(pt);
   } catch { return encoded; }
 }
 
-function decryptFile(encBytes, encKey) {
-  const aes = new aesjs.ModeOfOperation.gcm(hexToBytes(encKey), encBytes.slice(0, 12));
-  return new Uint8Array(aes.decrypt(encBytes.slice(12)));
+
+async function decryptFile(encBytes, encKey) {
+  const key = await crypto.subtle.importKey('raw', hexToBytes(encKey), { name: 'AES-GCM' }, false, ['decrypt']);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', nonce: encBytes.slice(0, 12) }, key, encBytes.slice(12));
+  return new Uint8Array(pt);
 }
 
 // ─── GitHub API ─────────────────────────────────────────────────────────
@@ -230,14 +231,13 @@ async function idbGet(key) {
 const PK_MAP = { students: 'sid', enrollments: 'eid', fees: 'fid' };
 const SENSITIVE = ['name', 'email', 'phone'];
 
-function applyChange(db, tableName, recordID, op, payloadJSON, encKey) {
+async function applyChange(db, tableName, recordID, op, payloadJSON, encKey) {
   let payload;
   try { payload = JSON.parse(payloadJSON); } catch { return; }
 
-  // Decrypt sensitive fields
   for (const col of SENSITIVE) {
     if (payload[col]) {
-      payload[col] = decryptValue(payload[col], encKey);
+      payload[col] = await decryptValue(payload[col], encKey);
     }
   }
 
@@ -301,7 +301,7 @@ async function doFullSync(pat, encKey) {
   if (!encDB) throw new Error(`db_cycle_${cycle}.db.enc not found`);
 
   setStatus('Decrypting DB…');
-  const dbBytes = decryptFile(encDB, encKey);
+  const dbBytes = await decryptFile(encDB, encKey);
 
   setStatus('Loading database…');
   db = new SQL.Database(dbBytes);
@@ -343,7 +343,7 @@ async function applyPendingCSVs(pat, encKey, startID) {
       const fields = parseCSVLine(lines[i]);
       if (fields.length < 6) continue;
       const [logID, tableName, recordID, op, payload, ts] = fields;
-      applyChange(db, tableName, recordID, op, payload, encKey);
+      await applyChange(db, tableName, recordID, op, payload, encKey);
       lastApplied = parseInt(logID);
     }
   }
