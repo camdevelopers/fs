@@ -1,0 +1,8 @@
+{
+  "name": "Fee Status Dashboard",
+  "short_name": "FeeDash",
+  "start_url": "/dashboard.html",
+  "display": "standalone",
+  "background_color": "#0f0f0f",
+  "theme_color": "#18181b"
+}   
