@@ -132,10 +132,19 @@ const GH_REPO = "temp";
 const ENC_KEY_LEN = 64; // last 64 chars of token = ENC_KEY
 
 // ─── State ──────────────────────────────────────────────────────────────
+let SQL = null;          // sql.js constructor (set after init)
 let db = null;           // sql.js database instance
 let allData = [];
 let sortCol = null;
 let sortDir = 'asc';
+
+
+// ─── Init sql.js ────────────────────────────────────────────────────────
+async function initSQL() {
+  SQL = await initSqlJs({
+    locateFile: file => `https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/${file}`
+  });
+}
 
 // ─── Crypto Helpers ─────────────────────────────────────────────────────
 function hexToBytes(hex) {
@@ -612,6 +621,7 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 
 // ─── Setup Orchestration ────────────────────────────────────────────────
 async function runSetup(pat, encKey) {
+  if (!SQL) await initSQL();  // ← add this line
   const savedCommit = localStorage.getItem('last_commit');
   const hasLocalDB = !!(await idbGet('db'));
 
