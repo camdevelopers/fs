@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fee Status Dashboard v4</title>
+  <title>Fee Status Dashboard v5</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="grid.css">
   <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
@@ -145,8 +145,10 @@ function hexToBytes(hex) {
 }
 
 async function decryptValue(encoded, encKey) {
+  if (!encoded || encoded.length < 24) return encoded; // too short to be encrypted
   try {
     const raw = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));
+    if (raw.length < 13) return encoded; // nonce(12) + at least 1 byte ciphertext
     const key = await crypto.subtle.importKey('raw', hexToBytes(encKey), { name: 'AES-GCM' }, false, ['decrypt']);
     const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', nonce: raw.slice(0, 12) }, key, raw.slice(12));
     return new TextDecoder().decode(pt);
