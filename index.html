@@ -662,6 +662,14 @@ async function runSetup(pat, encKey) {
     }
   }
 })();
+
+
+// ─── Service Worker Registration ────────────────────────────────────────
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('/sw.js').catch((e) =>
+    console.warn('SW registration failed:', e)
+  );
+}
 </script>
 </body>
 </html>   
