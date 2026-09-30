@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fee Status Dashboard v7</title>
+  <title>Fee Status Dashboard v8</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="grid.css">
   <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
@@ -262,21 +262,23 @@ async function applyChange(db, tableName, recordID, op, payloadJSON, encKey) {
   const pk = PK_MAP[tableName];
   if (!pk) return;
 
-  if (op === 'INSERT') {
-    const cols = Object.keys(payload);
-    const placeholders = cols.map(() => '?').join(', ');
-    const values = cols.map(c => payload[c] ?? null);
-    try {
-      db.run(`INSERT OR REPLACE INTO ${tableName} (${cols.join(', ')}) VALUES (${placeholders})`, values);
-    } catch (e) { console.warn('INSERT failed:', e); }
-  } else if (op === 'UPDATE') {
-    const cols = Object.keys(payload);
-    const sets = cols.map(c => `${c} = ?`).join(', ');
-    const values = [...cols.map(c => payload[c] ?? null), recordID];
-    try {
-      db.run(`UPDATE ${tableName} SET ${sets} WHERE ${pk} = ?`, values);
-    } catch (e) { console.warn('UPDATE failed:', e); }
-  }
+if (op === 'INSERT') {
+  const cols = Object.keys(payload);
+  const quoted = cols.map(c => `"${c}"`);
+  const placeholders = cols.map(() => '?').join(', ');
+  const values = cols.map(c => payload[c] ?? null);
+  try {
+    db.run(`INSERT OR REPLACE INTO ${tableName} (${quoted.join(', ')}) VALUES (${placeholders})`, values);
+  } catch (e) { console.error('INSERT failed:', e.message); }
+} else if (op === 'UPDATE') {
+  const cols = Object.keys(payload);
+  const quoted = cols.map(c => `"${c}"`);
+  const sets = cols.map((c, i) => `${quoted[i]} = ?`).join(', ');
+  const values = [...cols.map(c => payload[c] ?? null), recordID];
+  try {
+    db.run(`UPDATE ${tableName} SET ${sets} WHERE "${pk}" = ?`, values);
+  } catch (e) { console.error('UPDATE failed:', e.message); }
+}   
 }
 
 function parseCSVLine(line) {
