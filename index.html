@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fee Status Dashboard v6</title>
+  <title>Fee Status Dashboard v6.1</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="grid.css">
   <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
@@ -157,14 +157,19 @@ async function decryptValue(encoded, encKey) {
 
 
 async function decryptFile(encBytes, encKey) {
-  // File content is a base64 string (Go's Encrypt output) — decode it
-  const b64str = new TextDecoder().decode(encBytes);
-  const raw = Uint8Array.from(atob(b64str), c => c.charCodeAt(0));
-
-  const key = await crypto.subtle.importKey('raw', hexToBytes(encKey), { name: 'AES-GCM' }, false, ['decrypt']);
-  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', nonce: raw.slice(0, 12) }, key, raw.slice(12));
-  return new Uint8Array(pt);
-}   
+  console.log('[diag] encBytes.length =', encBytes.length);
+  console.log('[diag] encKey =', encKey);
+  console.log('[diag] key bytes =', hexToBytes(encKey).length);
+  console.log('[diag] nonce hex =', Array.from(encBytes.slice(0,12)).map(b=>b.toString(16).padStart(2,'0')).join(''));
+  try {
+    const key = await crypto.subtle.importKey('raw', hexToBytes(encKey), { name: 'AES-GCM' }, false, ['decrypt']);
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', nonce: encBytes.slice(0, 12) }, key, encBytes.slice(12));
+    return new Uint8Array(pt);
+  } catch (e) {
+    console.error('[diag] FAILED:', e.message);
+    throw e;
+  }
+}
 
 // ─── GitHub API ─────────────────────────────────────────────────────────
 async function ghFetch(path, pat) {
