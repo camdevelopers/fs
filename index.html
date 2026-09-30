@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fee Status Dashboard v6.3</title>
+  <title>Fee Status Dashboard v7</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="grid.css">
   <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
@@ -202,9 +202,12 @@ async function ghGetCommit(pat) {
 }
 
 async function ghDownloadFile(pat, path) {
-  const data = await ghFetch(path, pat);
-  if (!data || !data.content) return null;
-  return Uint8Array.from(atob(data.content), c => c.charCodeAt(0));
+  const res = await fetch(
+    `https://api.github.com/repos/${GH_OWNER}/${GH_REPO}/contents/${path}`,
+    { headers: { 'Authorization': `token ${pat}`, 'Accept': 'application/vnd.github.v3.raw' } }
+  );
+  if (!res.ok) return null;
+  return new Uint8Array(await res.arrayBuffer());
 }
 
 // ─── IndexedDB (persistent DB storage) ──────────────────────────────────
