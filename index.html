@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fee Status Dashboard v6.1</title>
+  <title>Fee Status Dashboard v6.2</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="grid.css">
   <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
@@ -145,31 +145,26 @@ function hexToBytes(hex) {
 }
 
 async function decryptValue(encoded, encKey) {
-  if (!encoded || encoded.length < 24) return encoded; // too short to be encrypted
+  if (!encoded || encoded.length < 24) return encoded;
   try {
     const raw = Uint8Array.from(atob(encoded), c => c.charCodeAt(0));
-    if (raw.length < 13) return encoded; // nonce(12) + at least 1 byte ciphertext
+    if (raw.length < 13) return encoded;
     const key = await crypto.subtle.importKey('raw', hexToBytes(encKey), { name: 'AES-GCM' }, false, ['decrypt']);
-    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', nonce: raw.slice(0, 12) }, key, raw.slice(12));
+    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12) }, key, raw.slice(12));
+    //                                                         ^^ was "nonce"
     return new TextDecoder().decode(pt);
   } catch { return encoded; }
 }
 
 
 async function decryptFile(encBytes, encKey) {
-  console.log('[diag] encBytes.length =', encBytes.length);
-  console.log('[diag] encKey =', encKey);
-  console.log('[diag] key bytes =', hexToBytes(encKey).length);
-  console.log('[diag] nonce hex =', Array.from(encBytes.slice(0,12)).map(b=>b.toString(16).padStart(2,'0')).join(''));
-  try {
-    const key = await crypto.subtle.importKey('raw', hexToBytes(encKey), { name: 'AES-GCM' }, false, ['decrypt']);
-    const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', nonce: encBytes.slice(0, 12) }, key, encBytes.slice(12));
-    return new Uint8Array(pt);
-  } catch (e) {
-    console.error('[diag] FAILED:', e.message);
-    throw e;
-  }
+  const key = await crypto.subtle.importKey('raw', hexToBytes(encKey), { name: 'AES-GCM' }, false, ['decrypt']);
+  const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: encBytes.slice(0, 12) }, key, encBytes.slice(12));
+  //                                                 ^^ was "nonce"
+  return new Uint8Array(pt);
 }
+
+
 
 // ─── GitHub API ─────────────────────────────────────────────────────────
 async function ghFetch(path, pat) {
