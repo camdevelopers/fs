@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fee Dashboard v10</title>
+  <title>Fee Status Dashboard v5</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="grid.css">
   <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
@@ -40,7 +40,7 @@
     @keyframes spin { to { transform: rotate(360deg); } }
     .setup-panel .status { font-size: 12px; color: #71717a; margin-top: 8px; }
 
-    /* ─── Main Table (same as feestatus.html) ─── */
+    /* ─── Main Table ─── */
     .feestatus-wrap { max-width: 1200px; margin: 0 auto; }
     .feestatus-toolbar {
       display: flex; gap: 12px; align-items: center;
@@ -129,15 +129,16 @@
 // ─── Config ─────────────────────────────────────────────────────────────
 const GH_OWNER = "camdevelopers";
 const GH_REPO = "temp";
-const ENC_KEY_LEN = 64; // last 64 chars of token = ENC_KEY
+const ENC_KEY_LEN = 64;
 
 // ─── State ──────────────────────────────────────────────────────────────
-let SQL = null;          // sql.js constructor (set after init)
-let db = null;           // sql.js database instance
+let SQL = null;
+let db = null;
 let allData = [];
 let sortCol = null;
 let sortDir = 'asc';
-
+let maxFees = 0;
+let COLUMNS = [];
 
 // ─── Init sql.js ────────────────────────────────────────────────────────
 async function initSQL() {
@@ -160,20 +161,18 @@ async function decryptValue(encoded, encKey) {
     if (raw.length < 13) return encoded;
     const key = await crypto.subtle.importKey('raw', hexToBytes(encKey), { name: 'AES-GCM' }, false, ['decrypt']);
     const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: raw.slice(0, 12) }, key, raw.slice(12));
-    //                                                         ^^ was "nonce"
     return new TextDecoder().decode(pt);
-  } catch { return encoded; }
+  } catch (e) {
+    console.warn('[decryptValue] failed:', encoded.slice(0, 40), '→', e.message);
+    return encoded;
+  }
 }
-
 
 async function decryptFile(encBytes, encKey) {
   const key = await crypto.subtle.importKey('raw', hexToBytes(encKey), { name: 'AES-GCM' }, false, ['decrypt']);
   const pt = await crypto.subtle.decrypt({ name: 'AES-GCM', iv: encBytes.slice(0, 12) }, key, encBytes.slice(12));
-  //                                                 ^^ was "nonce"
   return new Uint8Array(pt);
 }
-
-
 
 // ─── GitHub API ─────────────────────────────────────────────────────────
 async function ghFetch(path, pat) {
@@ -215,9 +214,9 @@ function openIDB() {
   return new Promise((resolve, reject) => {
     const req = indexedDB.open('feeDash', 1);
     req.onupgradeneeded = (e) => {
-      const db = e.target.result;
-      if (!db.objectStoreNames.contains('kv')) {
-        db.createObjectStore('kv');
+      const d = e.target.result;
+      if (!d.objectStoreNames.contains('kv')) {
+        d.createObjectStore('kv');
       }
     };
     req.onsuccess = (e) => resolve(e.target.result);
@@ -262,27 +261,26 @@ async function applyChange(db, tableName, recordID, op, payloadJSON, encKey) {
   const pk = PK_MAP[tableName];
   if (!pk) return;
 
-if (op === 'INSERT') {
-  const cols = Object.keys(payload);
-  const quoted = cols.map(c => `"${c}"`);
-  const placeholders = cols.map(() => '?').join(', ');
-  const values = cols.map(c => payload[c] ?? null);
-  try {
-    db.run(`INSERT OR REPLACE INTO ${tableName} (${quoted.join(', ')}) VALUES (${placeholders})`, values);
-  } catch (e) { console.error('INSERT failed:', e.message); }
-} else if (op === 'UPDATE') {
-  const cols = Object.keys(payload);
-  const quoted = cols.map(c => `"${c}"`);
-  const sets = cols.map((c, i) => `${quoted[i]} = ?`).join(', ');
-  const values = [...cols.map(c => payload[c] ?? null), recordID];
-  try {
-    db.run(`UPDATE ${tableName} SET ${sets} WHERE "${pk}" = ?`, values);
-  } catch (e) { console.error('UPDATE failed:', e.message); }
-}   
+  if (op === 'INSERT') {
+    const cols = Object.keys(payload);
+    const quoted = cols.map(c => `"${c}"`);
+    const placeholders = cols.map(() => '?').join(', ');
+    const values = cols.map(c => payload[c] ?? null);
+    try {
+      db.run(`INSERT OR REPLACE INTO ${tableName} (${quoted.join(', ')}) VALUES (${placeholders})`, values);
+    } catch (e) { console.error('INSERT failed:', e.message); }
+  } else if (op === 'UPDATE') {
+    const cols = Object.keys(payload);
+    const quoted = cols.map(c => `"${c}"`);
+    const sets = cols.map((c, i) => `${quoted[i]} = ?`).join(', ');
+    const values = [...cols.map(c => payload[c] ?? null), recordID];
+    try {
+      db.run(`UPDATE ${tableName} SET ${sets} WHERE "${pk}" = ?`, values);
+    } catch (e) { console.error('UPDATE failed:', e.message); }
+  }
 }
 
 function parseCSVLine(line) {
-  // Simple CSV parser (handles quoted fields)
   const fields = [];
   let cur = '', inQuotes = false;
   for (let i = 0; i < line.length; i++) {
@@ -306,12 +304,10 @@ function parseCSVLine(line) {
 async function doFullSync(pat, encKey) {
   setStatus('Reading cycle info…');
 
-  // Get cycle.txt
   const cycleData = await ghDownloadFile(pat, 'cycle.txt');
   if (!cycleData) throw new Error('cycle.txt not found');
   const cycle = parseInt(new TextDecoder().decode(cycleData).trim());
 
-  // Get latest_log_id.txt
   const logIDData = await ghDownloadFile(pat, 'latest_log_id.txt');
   if (!logIDData) throw new Error('latest_log_id.txt not found');
   const latestLogID = parseInt(new TextDecoder().decode(logIDData).trim());
@@ -329,7 +325,6 @@ async function doFullSync(pat, encKey) {
   await idbSet('latest_log_id', latestLogID);
   await idbSet('cycle', cycle);
 
-  // Now apply any CSVs above latestLogID
   await applyPendingCSVs(pat, encKey, latestLogID);
 }
 
@@ -359,7 +354,7 @@ async function applyPendingCSVs(pat, encKey, startID) {
     const text = new TextDecoder().decode(csvData);
     const lines = text.split('\n').filter(l => l.trim());
 
-    for (let i = 1; i < lines.length; i++) { // skip header
+    for (let i = 1; i < lines.length; i++) {
       const fields = parseCSVLine(lines[i]);
       if (fields.length < 6) continue;
       const [logID, tableName, recordID, op, payload, ts] = fields;
@@ -375,12 +370,10 @@ async function applyPendingCSVs(pat, encKey, startID) {
 }
 
 async function doIncrementalSync(pat, encKey) {
-  // Check if new commit
   const latestCommit = await ghGetCommit(pat);
   const savedCommit = localStorage.getItem('last_commit');
 
   if (latestCommit === savedCommit) {
-    // No new commit, just load local DB
     setStatus('Loading local database…');
     const dbBlob = await idbGet('db');
     if (dbBlob) {
@@ -389,17 +382,14 @@ async function doIncrementalSync(pat, encKey) {
     return;
   }
 
-  // New commit — check if cycle changed
   const cycleData = await ghDownloadFile(pat, 'cycle.txt');
   if (!cycleData) throw new Error('cycle.txt not found');
   const remoteCycle = parseInt(new TextDecoder().decode(cycleData).trim());
   const localCycle = await idbGet('cycle') || 0;
 
   if (remoteCycle > localCycle) {
-    // Full cycle update
     await doFullSync(pat, encKey);
   } else {
-    // Incremental: load local DB, apply new CSVs
     setStatus('Loading local database…');
     const dbBlob = await idbGet('db');
     if (!dbBlob) throw new Error('No local DB found. Please do a full sync.');
@@ -412,27 +402,31 @@ async function doIncrementalSync(pat, encKey) {
   localStorage.setItem('last_commit', latestCommit);
 }
 
-// ─── Table Rendering (same as feestatus.html) ───────────────────────────
-const COLUMNS = [
-  { key: 'sid', label: 'SID' },
-  { key: 'name', label: 'Name' },
-  { key: 'eid', label: 'EID' },
-  { key: 'enrollDate', label: 'Enroll Date' },
-  { key: 'cid', label: 'Course' },
-  { key: 'courseFee', label: 'Course Fee' },
-  { key: 'scholarship', label: 'Scholarship' },
-  { key: 'fee1Amount', label: 'Fee 1' },
-  { key: 'fee2Amount', label: 'Fee 2' },
-  { key: 'fee3Amount', label: 'Fee 3' },
-  { key: 'dueAmount', label: 'Due Amount' },
-  { key: 'dueDate', label: 'Due Date' },
-  { key: 'message', label: 'Message' },
-];
+// ─── Table Rendering (dynamic fees) ─────────────────────────────────────
+function buildColumns() {
+  COLUMNS = [
+    { key: 'sid', label: 'SID' },
+    { key: 'name', label: 'Name' },
+    { key: 'eid', label: 'EID' },
+    { key: 'enrollDate', label: 'Enroll Date' },
+    { key: 'cid', label: 'Course' },
+    { key: 'courseFee', label: 'Course Fee' },
+    { key: 'scholarship', label: 'Scholarship' },
+  ];
+  for (let i = 1; i <= maxFees; i++) {
+    COLUMNS.push({ key: `fee${i}`, label: `Fee ${i}` });
+  }
+  COLUMNS.push(
+    { key: 'dueAmount', label: 'Due Amount' },
+    { key: 'dueDate', label: 'Due Date' },
+    { key: 'message', label: 'Message' }
+  );
+}
 
 function calcDueAmount(row) {
   const feesSum = row.fees.reduce((a, b) => a + b, 0);
   return (row.courseFee - row.scholarship) - feesSum;
-}   
+}
 
 function calcDueDate(row) {
   const d = new Date();
@@ -448,11 +442,9 @@ function calcMessage(row, dueAmt, dueDt) {
 }
 
 function loadTableData() {
-  // Find max fees per enrollment
   const maxRes = db.exec(`SELECT COALESCE(MAX(cnt), 0) FROM (SELECT COUNT(*) as cnt FROM fees GROUP BY eid)`);
-  const maxFees = maxRes.length ? maxRes[0].values[0][0] : 0;
+  maxFees = maxRes.length ? maxRes[0].values[0][0] : 0;
 
-  // Build dynamic SELECT + JOINs
   let select = `s.sid, s.name, s.phone, e.eid, e.cid, e.date, e.scholarship_amount, c.course_fee`;
   let joins = ``;
   for (let i = 0; i < maxFees; i++) {
@@ -491,54 +483,7 @@ function loadTableData() {
     }
     return rowObj;
   });
-}   
-
-  const res = db.exec(sql);
-  if (res.length === 0) { allData = []; return; }
-
-  const cols = res[0].columns;
-  allData = res[0].values.map(row => {
-    const obj = {};
-    cols.forEach((c, i) => { obj[c] = row[i]; });
-    return {
-      sid: obj.sid || '',
-      name: obj.name || '',
-      phone: obj.phone || '',
-      eid: obj.eid || '',
-      cid: obj.cid || '',
-      enrollDate: obj.date || '',
-      scholarship: obj.scholarship_amount || 0,
-      courseFee: obj.course_fee || 0,
-      fee1Amount: obj.fee1_amount || 0,
-      fee2Amount: obj.fee2_amount || 0,
-      fee3Amount: obj.fee3_amount || 0,
-    };
-  });
-
-
-
-
-// Build COLUMNS after loadTableData()
-function buildColumns(maxFees) {
-  const base = [
-    { key: 'sid', label: 'SID' },
-    { key: 'name', label: 'Name' },
-    { key: 'eid', label: 'EID' },
-    { key: 'enrollDate', label: 'Enroll Date' },
-    { key: 'cid', label: 'Course' },
-    { key: 'courseFee', label: 'Course Fee' },
-    { key: 'scholarship', label: 'Scholarship' },
-  ];
-  for (let i = 1; i <= maxFees; i++) {
-    base.push({ key: `fee${i}`, label: `Fee ${i}` });
-  }
-  base.push(
-    { key: 'dueAmount', label: 'Due Amount' },
-    { key: 'dueDate', label: 'Due Date' },
-    { key: 'message', label: 'Message' }
-  );
-  return base;
-}   
+}
 
 function render(data) {
   const hrow = document.getElementById('headerRow');
@@ -566,14 +511,11 @@ function render(data) {
       } else if (col.key === 'message') {
         td.textContent = calcMessage(row, calcDueAmount(row), calcDueDate(row));
         td.className = 'msg-cell';
-      } 
-       else if (col.key.startsWith('fee')) {
-  const idx = parseInt(col.key.replace('fee', '')) - 1;
-  td.textContent = row.fees[idx] > 0 ? '₹' + row.fees[idx].toFixed(0) : '—';
-}
-      
-      
-      else {
+      } else if (col.key.startsWith('fee')) {
+        const idx = parseInt(col.key.slice(3)) - 1;
+        const v = row.fees[idx] || 0;
+        td.textContent = v > 0 ? '₹' + v.toFixed(0) : '—';
+      } else {
         td.textContent = row[col.key] != null ? row[col.key] : '';
       }
       tr.appendChild(td);
@@ -612,8 +554,13 @@ function applyFilters() {
 
   if (sortCol) {
     filtered.sort((a, b) => {
-      let av = a[sortCol], bv = b[sortCol];
+      let av, bv;
       if (sortCol === 'dueAmount') { av = calcDueAmount(a); bv = calcDueAmount(b); }
+      else if (sortCol.startsWith('fee')) {
+        const idx = parseInt(sortCol.slice(3)) - 1;
+        av = a.fees[idx] || 0; bv = b.fees[idx] || 0;
+      }
+      else { av = a[sortCol]; bv = b[sortCol]; }
       if (av == null) return 1;
       if (bv == null) return -1;
       let cmp;
@@ -658,12 +605,10 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
   const encKey = token.slice(-ENC_KEY_LEN);
   const pat = token.slice(0, -ENC_KEY_LEN);
 
-  // Store
   localStorage.setItem('user_name', name);
   localStorage.setItem('gh_pat', pat);
   localStorage.setItem('enc_key', encKey);
 
-  // Verify PAT works
   err.style.display = 'none';
   document.getElementById('loginBtn').disabled = true;
   showScreen('setupScreen');
@@ -682,30 +627,28 @@ document.getElementById('loginBtn').addEventListener('click', async () => {
 
 // ─── Setup Orchestration ────────────────────────────────────────────────
 async function runSetup(pat, encKey) {
-  if (!SQL) await initSQL();  // ← add this line
+  if (!SQL) await initSQL();
+
   const savedCommit = localStorage.getItem('last_commit');
   const hasLocalDB = !!(await idbGet('db'));
 
   if (!savedCommit || !hasLocalDB) {
-    // First time: full sync
     await doFullSync(pat, encKey);
     localStorage.setItem('last_commit', await ghGetCommit(pat));
   } else {
-    // Subsequent: incremental
     await doIncrementalSync(pat, encKey);
   }
 
-  // Load and display
   loadTableData();
+  buildColumns();
   applyFilters();
   showScreen('mainScreen');
 
-  // Wire filters
   document.getElementById('filterText').addEventListener('input', applyFilters);
   document.getElementById('filterStatus').addEventListener('change', applyFilters);
 }
 
-// ─── Auto-login (if token saved) ────────────────────────────────────────
+// ─── Auto-login ─────────────────────────────────────────────────────────
 (async function checkAutoLogin() {
   const pat = localStorage.getItem('gh_pat');
   const encKey = localStorage.getItem('enc_key');
@@ -720,7 +663,6 @@ async function runSetup(pat, encKey) {
     }
   }
 })();
-
 
 // ─── Service Worker Registration ────────────────────────────────────────
 if ('serviceWorker' in navigator) {
