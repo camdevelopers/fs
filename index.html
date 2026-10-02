@@ -423,17 +423,60 @@ function buildColumns() {
   );
 }
 
-function calcDueAmount(row) {
+function calcDueAmount1(row) {
   const feesSum = row.fees.reduce((a, b) => a + b, 0);
   return (row.courseFee - row.scholarship) - feesSum;
 }
 
-function calcDueDate(row) {
+function calcDueDate1(row) {
   const d = new Date();
   d.setDate(d.getDate() + 30);
   return d.toISOString().split('T')[0];
 }
 
+  function isVAL(eid) {
+  return eid && (eid.startsWith('MIM') || eid.startsWith('WIM'));
+}
+
+function daysBetween(dateStr1, dateStr2) {
+  const d1 = new Date(dateStr1);
+  const d2 = new Date(dateStr2);
+  return Math.floor((d2 - d1) / (1000 * 60 * 60 * 24));
+}
+
+  
+function calcDueAmount(row) {
+  const feesSum = row.fees.reduce((a, b) => a + b, 0);
+  if (isVAL(row.eid)) {
+    const today = new Date().toISOString().split('T')[0];
+    const days = daysBetween(row.enrollDate, today);
+    const periodFee = row.courseFee > 0
+      ? 5000 * (row.courseFee - row.scholarship) / row.courseFee
+      : 5000;
+    let due = Math.floor(days / 90) * periodFee + 1000 - feesSum;
+    return due < 0 ? 0 : due;
+  }
+  return (row.courseFee - row.scholarship) - feesSum;
+}
+
+function calcDueDate(row) {
+  const feesSum = row.fees.reduce((a, b) => a + b, 0);
+  const due = calcDueAmount(row);
+
+  if (isVAL(row.eid)) {
+    if (due <= 0) return '';
+    const periodFee = row.courseFee > 0
+      ? 5000 * (row.courseFee - row.scholarship) / row.courseFee
+      : 5000;
+    if (periodFee <= 0) return '';
+    const d = new Date(row.enrollDate);
+    d.setDate(d.getDate() + Math.floor((feesSum - 1000) / periodFee) * 90);
+    return d.toISOString().split('T')[0];
+  }
+
+  if (due <= 0) return '';
+  return row.enrollDate;
+}   
 function calcMessage(row, dueAmt, dueDt) {
   if (dueAmt <= 0) return 'Fully paid';
   const today = new Date().toISOString().split('T')[0];
