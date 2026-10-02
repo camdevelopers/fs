@@ -419,7 +419,7 @@ function buildColumns() {
   COLUMNS.push(
     { key: 'dueAmount', label: 'Due Amount' },
     { key: 'dueDate', label: 'Due Date' },
-    { key: 'message', label: 'Message' }
+    { key: 'reminder', label: 'reminder' }
   );
 }
 
@@ -488,7 +488,7 @@ function loadTableData() {
   const maxRes = db.exec(`SELECT COALESCE(MAX(cnt), 0) FROM (SELECT COUNT(*) as cnt FROM fees GROUP BY eid)`);
   maxFees = maxRes.length ? maxRes[0].values[0][0] : 0;
 
-  let select = `s.sid, s.name, s.phone, e.eid, e.cid, e.date, e.scholarship_amount, c.course_fee`;
+  let select = `s.sid, s.name, s.phone, e.eid, e.cid, e.date, e.scholarship_amount, e.reminder c.course_fee`;
   let joins = ``;
   for (let i = 0; i < maxFees; i++) {
     select += `, f${i + 1}.amount AS fee${i + 1}_amount`;
@@ -520,6 +520,7 @@ function loadTableData() {
       scholarship: obj.scholarship_amount || 0,
       courseFee: obj.course_fee || 0,
       fees: [],
+      reminder: obj.reminder || '',
     };
     for (let i = 1; i <= maxFees; i++) {
       rowObj.fees.push(obj[`fee${i}_amount`] || 0);
@@ -551,8 +552,8 @@ function render(data) {
         td.className = v > 0 ? 'due-overdue' : 'due-ok';
       } else if (col.key === 'dueDate') {
         td.textContent = calcDueDate(row);
-      } else if (col.key === 'message') {
-        td.textContent = calcMessage(row, calcDueAmount(row), calcDueDate(row));
+      } else if (col.key === 'reminder') {
+        td.textContent = row.reminder || '—';;
         td.className = 'msg-cell';
       } else if (col.key.startsWith('fee')) {
         const idx = parseInt(col.key.slice(3)) - 1;
