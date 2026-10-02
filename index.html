@@ -488,7 +488,7 @@ function loadTableData() {
   const maxRes = db.exec(`SELECT COALESCE(MAX(cnt), 0) FROM (SELECT COUNT(*) as cnt FROM fees GROUP BY eid)`);
   maxFees = maxRes.length ? maxRes[0].values[0][0] : 0;
 
-  let select = `s.sid, s.name, s.phone, e.eid, e.cid, e.date, e.scholarship_amount, e.reminder c.course_fee`;
+  let select = `s.sid, s.name, s.phone, e.eid, e.cid, e.date, e.scholarship_amount, e.reminder, c.course_fee`;
   let joins = ``;
   for (let i = 0; i < maxFees; i++) {
     select += `, f${i + 1}.amount AS fee${i + 1}_amount`;
