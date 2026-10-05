@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fee Dashboard v5</title>
+  <title>Fee Dashboard v6</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="grid.css">
   <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
@@ -78,6 +78,18 @@
       background: #065f4622; color: #4ade80;
     }
     .sync-badge.stale { background: #7f1d1d22; color: #f87171; }
+
+   .rem-cell { font-size: 11px; color: #71717a; white-space: nowrap; }
+.rem-arrow {
+  padding: 1px 4px; font-size: 10px; line-height: 1;
+  background: none; border: 1px solid #3f3f46; border-radius: 3px;
+  color: #71717a; cursor: pointer; vertical-align: middle;
+}
+.rem-arrow:hover { color: #e4e4e7; border-color: #6366f1; }
+.rem-text {
+  font-size: 11px; color: #a1a1aa; margin-left: 4px;
+}   
+    
   </style>
 </head>
 <body>
@@ -554,10 +566,38 @@ function render(data) {
         td.className = v > 0 ? 'due-overdue' : 'due-ok';
       } else if (col.key === 'dueDate') {
         td.textContent = calcDueDate(row);
-      } else if (col.key === 'reminder') {
-        td.textContent = row.reminder || '—';;
-        td.className = 'msg-cell';
-      } else if (col.key.startsWith('fee')) {
+} else if (col.key === 'reminder') {
+  if (row.reminder) {
+    td.className = 'rem-cell';
+    const entries = row.reminder.trim().split(/\s+/);
+    let viewIdx = entries.length - 1;
+
+    const buildView = () => {
+      td.innerHTML = '';
+
+      if (viewIdx > 0) {
+        const prevBtn = document.createElement('button');
+        prevBtn.className = 'rem-arrow';
+        prevBtn.textContent = '◀';
+        prevBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          viewIdx--;
+          buildView();
+        });
+        td.appendChild(prevBtn);
+      }
+
+      const txt = document.createElement('span');
+      txt.className = 'rem-text';
+      txt.textContent = entries[viewIdx];
+      td.appendChild(txt);
+    };
+
+    buildView();
+  } else {
+    td.textContent = '—';
+  }
+}    else if (col.key.startsWith('fee')) {
         const idx = parseInt(col.key.slice(3)) - 1;
         const v = row.fees[idx] || 0;
         td.textContent = v > 0 ? '₹' + v.toFixed(0) : '—';
