@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Fee Dashboard v6</title>
+  <title>Fee Dashboard v7</title>
   <link rel="manifest" href="manifest.json">
   <link rel="stylesheet" href="grid.css">
   <script src="https://cdn.jsdelivr.net/npm/sql.js@1.10.3/dist/sql-wasm.js"></script>
@@ -566,7 +566,7 @@ function render(data) {
         td.className = v > 0 ? 'due-overdue' : 'due-ok';
       } else if (col.key === 'dueDate') {
         td.textContent = calcDueDate(row);
-} else if (col.key === 'reminder') {
+} } else if (col.key === 'reminder') {
   if (row.reminder) {
     td.className = 'rem-cell';
     const entries = row.reminder.trim().split(/\s+/);
@@ -591,13 +591,25 @@ function render(data) {
       txt.className = 'rem-text';
       txt.textContent = entries[viewIdx];
       td.appendChild(txt);
+
+      if (viewIdx < entries.length - 1) {
+        const nextBtn = document.createElement('button');
+        nextBtn.className = 'rem-arrow';
+        nextBtn.textContent = '▶';
+        nextBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          viewIdx++;
+          buildView();
+        });
+        td.appendChild(nextBtn);
+      }
     };
 
     buildView();
   } else {
     td.textContent = '—';
   }
-}    else if (col.key.startsWith('fee')) {
+}      else if (col.key.startsWith('fee')) {
         const idx = parseInt(col.key.slice(3)) - 1;
         const v = row.fees[idx] || 0;
         td.textContent = v > 0 ? '₹' + v.toFixed(0) : '—';
