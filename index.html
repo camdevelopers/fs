@@ -448,20 +448,21 @@ function calcDueDate1(row) {
   return d.toISOString().split('T')[0];
 }
 
-  function isVAL(eid) {
+function isVAL(eid) {
   return eid && (eid.startsWith('MIM') || eid.startsWith('WIM'));
 }
 
 function daysBetween(dateStr1, dateStr2) {
   const d1 = new Date(dateStr1);
   const d2 = new Date(dateStr2);
+  if (isNaN(d1.getTime()) || isNaN(d2.getTime())) return 0;
   return Math.floor((d2 - d1) / (1000 * 60 * 60 * 24));
 }
 
-  
 function calcDueAmount(row) {
   const feesSum = row.fees.reduce((a, b) => a + b, 0);
   if (isVAL(row.eid)) {
+    if (!row.enrollDate) return 0;
     const today = new Date().toISOString().split('T')[0];
     const days = daysBetween(row.enrollDate, today);
     const periodFee = row.courseFee > 0
@@ -483,14 +484,17 @@ function calcDueDate(row) {
       ? 5000 * (row.courseFee - row.scholarship) / row.courseFee
       : 5000;
     if (periodFee <= 0) return '';
+    if (!row.enrollDate) return '';
     const d = new Date(row.enrollDate);
-    d.setDate(d.getDate() + Math.floor((feesSum - 1000) / periodFee) * 90);
+    if (isNaN(d.getTime())) return '';
+    const periods = Math.max(0, Math.floor((feesSum - 1000) / periodFee));
+    d.setDate(d.getDate() + periods * 90);
     return d.toISOString().split('T')[0];
   }
 
   if (due <= 0) return '';
-  return row.enrollDate;
-}   
+  return row.enrollDate || '';
+}
 function calcMessage(row, dueAmt, dueDt) {
   if (dueAmt <= 0) return 'Fully paid';
   const today = new Date().toISOString().split('T')[0];
